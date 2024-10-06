@@ -1,0 +1,73 @@
+openapi: 3.0.3
+info:
+  title: Test
+  version: 1.0.0
+paths:
+  /authorization/login:
+    post:
+      description: Log in user into system
+      operationId: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/loginRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/loginResponse'
+        '404':
+          description: User with email and password not found
+
+  /authorization/refresh-token/{userId}:
+    get:
+      description: Refresh access token
+      operationId: RefreshToken
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/tokenResponse'
+
+components:
+  schemas:
+    loginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+
+    loginResponse:
+      type: object
+      required:
+        - accessToken
+        - userId
+      properties:
+        accessToken:
+          type: string
+        userId:
+          type: string
+          format: uuid
+
+    tokenResponse:
+      type: object
+      required:
+        - accessToken
+      properties:
+        accessToken:
+          type: string
