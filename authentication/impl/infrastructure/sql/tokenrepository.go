@@ -1,13 +1,13 @@
 package sql
 
 import (
+	"TestWork/authentication/impl/domain/model"
 	"TestWork/authentication/impl/domain/repositories"
 	"context"
 	"errors"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
-	"golang.org/x/crypto/bcrypt"
 )
 
 func NewTokenStorage(conn *pgxpool.Pool) repositories.TokenRepository {
@@ -18,78 +18,42 @@ type tokenRepository struct {
 	conn *pgxpool.Pool
 }
 
-// Проверка валидности refresh token полученного в запросе
-func (repo *tokenRepository) ValidateRefreshToken(context context.Context, userID uuid.UUID, oldToken uuid.UUID) (bool, error) {
-	var hashedOldToken []byte
+// Получение refresh token, записанного в базу данных
+func (repo *tokenRepository) GetToken(context context.Context, userID uuid.UUID) (model.RefreshToken, string, error) {
+	var token model.RefreshToken
+	var userIP string
 
 	err := repo.conn.QueryRow(context, `
-		SELECT token FROM user_token
-		WHERE userId = $1
-	`, userID).Scan(&hashedOldToken)
+		SELECT token, expires_in, user_ip FROM user_token
+		WHERE user_id = $1
+	`, userID).Scan(&token.Token, &token.ExpiresIn, &userIP)
 
 	if err == pgx.ErrNoRows {
-		return false, errors.New("user with token not found")
+		return model.RefreshToken{}, "", errors.New("user with token not found")
 	} else if err != nil {
-		return false, err
+		return model.RefreshToken{}, "", err
 	}
 
-	err = validateToken(oldToken, hashedOldToken)
-	if err != nil {
-		return false, err
-	}
-	return true, nil
+	return token, userIP, nil
 }
 
 // Обновление refresh token в базе данных
-func (repo *tokenRepository) UpdateToken(context context.Context, token uuid.UUID, userID uuid.UUID) error {
-	hashedToken, err := hashRefreshToken(token)
-	if err != nil {
-		return err
-	}
-
-	_, err = repo.conn.Exec(context, `
+func (repo *tokenRepository) UpdateToken(context context.Context, oldToken []byte, newToken model.RefreshToken, requestIP string) error {
+	_, err := repo.conn.Exec(context, `
 		UPDATE user_token
-		SET token = $1
-		WHERE userid = $2
-	`, hashedToken, userID)
+		SET token = $1, user_ip = $2, expires_in = $3
+		WHERE token = $4
+	`, newToken.Token, requestIP, newToken.ExpiresIn, oldToken)
 
 	return err
 }
 
 // Сохранение refresh token в базе данных
-func (repo *tokenRepository) SaveToken(context context.Context, token uuid.UUID, userID uuid.UUID) error {
-	hashedToken, err := hashRefreshToken(token)
-	if err != nil {
-		return err
-	}
-
-	_, err = repo.conn.Exec(context, `
-		INSERT INTO user_token (id, userid, token)
-		VALUES ($1, $2, $3)
-	`, uuid.New(), userID, hashedToken)
+func (repo *tokenRepository) SaveToken(context context.Context, session model.Session) error {
+	_, err := repo.conn.Exec(context, `
+		INSERT INTO user_token (id, user_id, user_ip, token, expires_in)
+		VALUES ($1, $2, $3, $4, $5)
+	`, session.ID, session.UserID, session.UserIP, session.Token.Token, session.Token.ExpiresIn)
 
 	return err
-}
-
-func hashRefreshToken(token uuid.UUID) ([]byte, error) {
-	byteToken, err := token.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
-
-	hash, err := bcrypt.GenerateFromPassword(byteToken, 12)
-	if err != nil {
-		return nil, err
-	}
-
-	return hash, nil
-}
-
-func validateToken(oldToken uuid.UUID, hashedOldToken []byte) error {
-	byteOldToken, err := oldToken.MarshalBinary()
-	if err != nil {
-		return err
-	}
-
-	return bcrypt.CompareHashAndPassword(hashedOldToken, byteOldToken)
 }

@@ -2,7 +2,7 @@ package services
 
 import (
 	"TestWork/authentication/impl/app/commands"
-	"TestWork/authentication/impl/domain/model"
+	"TestWork/authentication/impl/app/mapper/loginmapper"
 	"TestWork/authentication/impl/domain/repositories"
 	"TestWork/authentication/impl/domain/services"
 	"context"
@@ -25,10 +25,7 @@ type authService struct {
 
 // Обработка запроса на логинацию
 func (service *authService) Login(context context.Context, loginData commands.LoginCommand, requestIP string) (commands.LoginResult, error) {
-	domainLoginData := model.LoginData{
-		Email:    loginData.Email,
-		Password: loginData.Password,
-	}
+	domainLoginData := loginmapper.NewLoginDataToDomainLoginData(loginData)
 
 	//Получение пароля пользователя из базы данных по логину (эл. почте)
 	password, err := service.repository.GetPassword(context, domainLoginData.Email)
